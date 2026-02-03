@@ -1,0 +1,19 @@
+{
+  "description": "MiniPlanner - Project Planning and Gantt Scheduling",
+  "defaultMode": "project",
+  "templates": {
+    "project": {
+      "enabled": true,
+      "displayName": "Project Planner"
+    },
+    "gantt": {
+      "enabled": true,
+      "displayName": "Gantt Scheduler"
+    }
+  },
+  "presets": {
+    "planner": ["project", "gantt"],
+    "project": ["project"],
+    "gantt": ["gantt"]
+  }
+}
