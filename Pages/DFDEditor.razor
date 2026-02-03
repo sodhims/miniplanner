@@ -3085,66 +3085,42 @@
                 {
                     <div class="section-content">
                         <div class="minimap-container" @onclick="HandleMinimapClick" style="cursor: crosshair;">
-                            @if (isGanttMode && ganttTimeline != null && ganttTimelineView)
+                            @{ EnsureMinimapCache(); }
+                            @if (isGanttMode && ganttTimeline != null && ganttTimelineView && _minimapGanttMachines != null)
                             {
-                                @* Gantt mode minimap with dynamic viewBox *@
-                                var ganttMiniWidth = ganttTimeline.GetTimelineWidth();
-                                var ganttMiniHeight = ganttTimeline.GetTimelineHeight(GetGanttMachineNodes().Count());
-                                var ganttStrokeWidth = Math.Max(4, ganttMiniWidth / 500);
+                                @* Gantt mode minimap using cached data *@
+                                var ganttStrokeWidth = Math.Max(4, _minimapGanttWidth / 500);
                                 var miniGanttTheme = dfdTheme.GetGanttColors();
-                                <svg class="minimap" viewBox="0 0 @ganttMiniWidth @ganttMiniHeight" preserveAspectRatio="xMidYMid meet" @ref="minimapRef">
-                                    <rect x="0" y="0" width="@ganttMiniWidth" height="@ganttMiniHeight" fill="@miniGanttTheme.CanvasBackground" stroke="@miniGanttTheme.HeaderStroke" />
+                                <svg class="minimap" viewBox="0 0 @_minimapGanttWidth @_minimapGanttHeight" preserveAspectRatio="xMidYMid meet" @ref="minimapRef">
+                                    <rect x="0" y="0" width="@_minimapGanttWidth" height="@_minimapGanttHeight" fill="@miniGanttTheme.CanvasBackground" stroke="@miniGanttTheme.HeaderStroke" />
                                     @* Machine rows *@
-                                    @{
-                                        var miniGanttMachines = GetGanttMachineNodes().ToList();
-                                        for (int mi = 0; mi < miniGanttMachines.Count; mi++)
-                                        {
-                                            var rowY = ganttTimeline.GetRowY(mi);
-                                            <rect x="0" y="@rowY" width="@ganttMiniWidth" height="@ganttTimeline.RowHeight"
-                                                  fill="@(mi % 2 == 0 ? miniGanttTheme.RowEvenFill : miniGanttTheme.RowOddFill)" />
-                                        }
-                                    }
-                                    @* Task bars - apply layer overrides for minimap *@
-                                    @{
-                                        var miniVisibleLayers = layerService.GetVisibleLayers().ToList();
-                                        var miniAllTasks = GetGanttTaskNodes().ToList();
-                                        IEnumerable<Node> miniGanttTasks;
-
-                                        if (isBaseLayerVisible)
-                                        {
-                                            miniGanttTasks = miniVisibleLayers.Count > 0
-                                                ? miniAllTasks.Select(t => layerService.GetEffectiveNode(t, miniVisibleLayers))
-                                                : miniAllTasks;
-                                        }
-                                        else if (miniVisibleLayers.Count > 0)
-                                        {
-                                            var miniOverriddenIds = miniVisibleLayers.SelectMany(l => l.NodeOverrides.Keys).ToHashSet();
-                                            miniGanttTasks = miniAllTasks
-                                                .Where(t => miniOverriddenIds.Contains(t.Id))
-                                                .Select(t => layerService.GetEffectiveNode(t, miniVisibleLayers));
-                                        }
-                                        else
-                                        {
-                                            miniGanttTasks = Enumerable.Empty<Node>();
-                                        }
-                                    }
-                                    @foreach (var task in miniGanttTasks)
+                                    @for (int mi = 0; mi < _minimapGanttMachines.Count; mi++)
                                     {
-                                        if (task.GanttStartTime.HasValue && task.GanttDuration.HasValue)
+                                        var rowY = ganttTimeline.GetRowY(mi);
+                                        <rect x="0" y="@rowY" width="@_minimapGanttWidth" height="@ganttTimeline.RowHeight"
+                                              fill="@(mi % 2 == 0 ? miniGanttTheme.RowEvenFill : miniGanttTheme.RowOddFill)" />
+                                    }
+                                    @* Task bars from cache *@
+                                    @if (_minimapGanttTasks != null)
+                                    {
+                                        @foreach (var task in _minimapGanttTasks)
                                         {
-                                            var tx = ganttTimeline.TimeToX(task.GanttStartTime.Value);
-                                            var tw = ganttTimeline.DurationToWidth(task.GanttDuration.Value);
-                                            var tMachineIdx = miniGanttMachines.FindIndex(m => m.Id == task.GanttMachineId);
-                                            if (tMachineIdx >= 0)
+                                            if (task.GanttStartTime.HasValue && task.GanttDuration.HasValue)
                                             {
-                                                var ty = ganttTimeline.GetRowY(tMachineIdx) + 4;
-                                                var th = ganttTimeline.RowHeight - 8;
-                                                <rect x="@tx" y="@ty" width="@tw" height="@th"
-                                                      fill="@(task.FillColor ?? miniGanttTheme.TaskDefaultFill)" stroke="@(task.StrokeColor ?? miniGanttTheme.TaskDefaultStroke)" stroke-width="1" />
+                                                var tx = ganttTimeline.TimeToX(task.GanttStartTime.Value);
+                                                var tw = ganttTimeline.DurationToWidth(task.GanttDuration.Value);
+                                                var tMachineIdx = _minimapGanttMachines.FindIndex(m => m.Id == task.GanttMachineId);
+                                                if (tMachineIdx >= 0)
+                                                {
+                                                    var ty = ganttTimeline.GetRowY(tMachineIdx) + 4;
+                                                    var th = ganttTimeline.RowHeight - 8;
+                                                    <rect x="@tx" y="@ty" width="@tw" height="@th"
+                                                          fill="@(task.FillColor ?? miniGanttTheme.TaskDefaultFill)" stroke="@(task.StrokeColor ?? miniGanttTheme.TaskDefaultStroke)" stroke-width="1" />
+                                                }
                                             }
                                         }
                                     }
-                                    @* Viewport indicator - scale by zoom level *@
+                                    @* Viewport indicator *@
                                     <rect x="@(scrollX / zoomLevel)" y="@(scrollY / zoomLevel)"
                                           width="@(viewportWidth / zoomLevel)" height="@(viewportHeight / zoomLevel)"
                                           fill="@miniGanttTheme.SelectionFill"
@@ -3152,31 +3128,26 @@
                                           style="cursor: move;" />
                                 </svg>
                             }
-                            else if (isProjectMode && projectTimeline != null && projectViewMode == "timeline")
+                            else if (isProjectMode && projectTimeline != null && projectViewMode == "timeline" && _minimapProjectNodes != null)
                             {
-                                @* Project mode minimap with dynamic viewBox *@
-                                var projMiniWidth = GetProjectTotalWidth();
-                                var projMiniHeight = GetProjectTotalHeight();
-                                var projStrokeWidth = Math.Max(4, projMiniWidth / 500);
-                                <svg class="minimap" viewBox="0 0 @projMiniWidth @projMiniHeight" preserveAspectRatio="xMidYMid meet" @ref="minimapRef">
-                                    <rect x="0" y="0" width="@projMiniWidth" height="@projMiniHeight" fill="#f8fafc" stroke="#e2e8f0" />
-                                    @* Task bars *@
-                                    @{
-                                        var projNodes = GetprojectNodes().ToList();
-                                        for (int ri = 0; ri < projNodes.Count; ri++)
+                                @* Project mode minimap using cached data *@
+                                var projStrokeWidth = Math.Max(4, _minimapProjectWidth / 500);
+                                <svg class="minimap" viewBox="0 0 @_minimapProjectWidth @_minimapProjectHeight" preserveAspectRatio="xMidYMid meet" @ref="minimapRef">
+                                    <rect x="0" y="0" width="@_minimapProjectWidth" height="@_minimapProjectHeight" fill="#f8fafc" stroke="#e2e8f0" />
+                                    @* Task bars from cache *@
+                                    @for (int ri = 0; ri < _minimapProjectNodes.Count; ri++)
+                                    {
+                                        var pnode = _minimapProjectNodes[ri];
+                                        if (pnode.ProjectStartDate.HasValue)
                                         {
-                                            var pnode = projNodes[ri];
-                                            if (pnode.ProjectStartDate.HasValue)
-                                            {
-                                                var bounds = projectTimeline.GetNodeBarBounds(pnode);
-                                                var py = projectTimeline.RowToY(ri) + 6;
-                                                var ph = projectTimeline.RowHeight - 12;
-                                                <rect x="@bounds.x" y="@py" width="@bounds.width" height="@ph"
-                                                      fill="@(pnode.FillColor ?? "#3b82f6")" stroke="@(pnode.StrokeColor ?? "#1e40af")" stroke-width="1" />
-                                            }
+                                            var bounds = projectTimeline.GetNodeBarBounds(pnode);
+                                            var py = projectTimeline.RowToY(ri) + 6;
+                                            var ph = projectTimeline.RowHeight - 12;
+                                            <rect x="@bounds.x" y="@py" width="@bounds.width" height="@ph"
+                                                  fill="@(pnode.FillColor ?? "#3b82f6")" stroke="@(pnode.StrokeColor ?? "#1e40af")" stroke-width="1" />
                                         }
                                     }
-                                    @* Viewport indicator - scale by zoom level *@
+                                    @* Viewport indicator *@
                                     <rect x="@(scrollX / zoomLevel)" y="@(scrollY / zoomLevel)"
                                           width="@(viewportWidth / zoomLevel)" height="@(viewportHeight / zoomLevel)"
                                           fill="rgba(59, 130, 246, 0.1)"

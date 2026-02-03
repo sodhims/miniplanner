@@ -1102,7 +1102,24 @@ public partial class DFDEditor
             scrollY = scrollInfo[1];
             viewportWidth = scrollInfo[2];
             viewportHeight = scrollInfo[3];
-            StateHasChanged();
+
+            // Throttle re-renders during rapid scrolling (minimap viewport only needs ~16fps)
+            if (!_scrollPending)
+            {
+                _scrollPending = true;
+                if (_scrollThrottleTimer == null)
+                {
+                    _scrollThrottleTimer = new System.Timers.Timer(ScrollThrottleMs);
+                    _scrollThrottleTimer.AutoReset = false;
+                    _scrollThrottleTimer.Elapsed += (_, _) =>
+                    {
+                        _scrollPending = false;
+                        InvokeAsync(StateHasChanged);
+                    };
+                }
+                _scrollThrottleTimer.Stop();
+                _scrollThrottleTimer.Start();
+            }
         }
     }
 

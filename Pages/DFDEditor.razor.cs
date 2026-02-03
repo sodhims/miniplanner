@@ -1659,6 +1659,75 @@ private void SetConnectionMode(ConnectionModeType newMode)
     private double viewportWidth = 800;
     private double viewportHeight = 600;
 
+    // Minimap cache - avoids re-scanning nodes on every scroll/render
+    private List<Node>? _minimapGanttMachines;
+    private List<Node>? _minimapGanttTasks;
+    private List<Node>? _minimapProjectNodes;
+    private double _minimapGanttWidth;
+    private double _minimapGanttHeight;
+    private double _minimapProjectWidth;
+    private double _minimapProjectHeight;
+    private bool _minimapDirty = true;
+    private int _minimapNodeCount = -1;
+    private int _minimapEdgeCount = -1;
+
+    /// <summary>Mark minimap cache as stale. Call when nodes/edges/layers change.</summary>
+    private void InvalidateMinimapCache() => _minimapDirty = true;
+
+    /// <summary>Rebuild minimap cached data only when the data has actually changed.</summary>
+    private void EnsureMinimapCache()
+    {
+        // Auto-detect staleness: if node/edge count changed, data is definitely stale
+        if (nodes.Count != _minimapNodeCount || edges.Count != _minimapEdgeCount)
+        {
+            _minimapDirty = true;
+            _minimapNodeCount = nodes.Count;
+            _minimapEdgeCount = edges.Count;
+        }
+
+        if (!_minimapDirty) return;
+        _minimapDirty = false;
+
+        if (isGanttMode && ganttTimeline != null && ganttTimelineView)
+        {
+            _minimapGanttMachines = GetGanttMachineNodes().ToList();
+            _minimapGanttWidth = ganttTimeline.GetTimelineWidth();
+            _minimapGanttHeight = ganttTimeline.GetTimelineHeight(_minimapGanttMachines.Count);
+
+            var visibleLayers = layerService.GetVisibleLayers().ToList();
+            var allTasks = GetGanttTaskNodes().ToList();
+            if (isBaseLayerVisible)
+            {
+                _minimapGanttTasks = visibleLayers.Count > 0
+                    ? allTasks.Select(t => layerService.GetEffectiveNode(t, visibleLayers)).ToList()
+                    : allTasks;
+            }
+            else if (visibleLayers.Count > 0)
+            {
+                var overriddenIds = visibleLayers.SelectMany(l => l.NodeOverrides.Keys).ToHashSet();
+                _minimapGanttTasks = allTasks
+                    .Where(t => overriddenIds.Contains(t.Id))
+                    .Select(t => layerService.GetEffectiveNode(t, visibleLayers)).ToList();
+            }
+            else
+            {
+                _minimapGanttTasks = new List<Node>();
+            }
+        }
+
+        if (isProjectMode && projectTimeline != null)
+        {
+            _minimapProjectNodes = GetprojectNodes().ToList();
+            _minimapProjectWidth = GetProjectTotalWidth();
+            _minimapProjectHeight = GetProjectTotalHeight();
+        }
+    }
+
+    // Scroll throttle for minimap - only re-render at most every N ms during scroll
+    private System.Timers.Timer? _scrollThrottleTimer;
+    private bool _scrollPending = false;
+    private const int ScrollThrottleMs = 60;
+
     // Zoom
     private double zoomLevel = 1.0;
     private readonly double[] zoomLevels = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0 };
